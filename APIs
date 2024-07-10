@@ -67,18 +67,17 @@ def read_dynamoDB_items(tablename: str, key: str):
             },
             "body": json.dumps("Item not found")
         }
-def update_dynamoDB_items(tablename: str, key:str):
-    ddb = dynamodb.Table(tablename)
-    ddb.update_item(
+def update_dynamoDB_items(tablename: str, key: str, email: str):
+    ddb=dynamodb.Table(tablename)
+    ress=ddb.update_item(
         Key={
-            'DonorID': '51243715'
-            'email': 'janedoe',
-            'password': 'Doe'
+            'DonorID': key
         },
-        UpdateExpression='SET age = :val1',
+        UpdateExpression="set email = :e",
         ExpressionAttributeValues={
-            ':val1': 26
-        }
+            ':e': email
+        },
+        ReturnValues="UPDATED_NEW"
     )
 def lambda_handler(event, context):
     res = update_dynamoDB_items('Donors','51243715')
