@@ -1,10 +1,9 @@
-import json
-import json
-    
+import json    
 import boto3
 import ast
 import io
 import csv
+import hashlib
 region = 'eu-west-2'
 # Initialize dynamodb resource
 dynamodb = boto3.resource('dynamodb', region_name=region)
@@ -17,12 +16,16 @@ def insert_dynamoDB_items(tablename: str):
     - tablename: name of the dynamodb table where items will be inserted
     - items: list of elements that will be added to the dynamodb table
     """
+    
     ddb = dynamodb.Table(tablename)
+    hash_object = hashlib.sha256()
+    hash_object.update(ddb.password.encode())
+    hash_password = hash_object.hexdigest()
     ddb.put_item(
         Item={
         'DonorID': "51243715",
         'email': "ruba@idktest.com",
-        'password': "I'mACoolSDE"
+        'password': hash_password
         }
     )
     
@@ -67,22 +70,25 @@ def read_dynamoDB_items(tablename: str, key: str):
             },
             "body": json.dumps("Item not found")
         }
-def update_dynamoDB_items(tablename: str, key: str, email: str):
+def update_dynamoDB_items(tablename: str, key: str, email: str, password: str):
     ddb=dynamodb.Table(tablename)
+    hash_object = hashlib.sha256()
+    hash_object.update(password.encode())
+    hash_password = hash_object.hexdigest()
     ress=ddb.update_item(
         Key={
-            'DonorID': key
+            'DonorID': key,
+            'email': email,
+            'password': hash_password
         },
-        UpdateExpression="set email = :e",
+        UpdateExpression="set email = :e, password =:p",
         ExpressionAttributeValues={
-            ':e': email
+            ':e': email,
+            ':p': hash_password
         },
         ReturnValues="UPDATED_NEW"
     )
+    return ress
 def lambda_handler(event, context):
     res = read_dynamoDB_items('Donors','51243715')
     return res
-
-
-
-
