@@ -1,0 +1,110 @@
+import json    
+import boto3
+import ast
+import io
+import csv
+region = 'eu-west-2'
+# Initialize dynamodb resource
+dynamodb = boto3.resource('dynamodb', region_name=region)
+    
+    
+def insert_dynamoDB_items(tablename: str):
+    """
+    Insert items to a dynamodb table.
+    Arguments:
+    - tablename: name of the dynamodb table where items will be inserted
+    - items: list of elements that will be added to the dynamodb table
+    """
+    
+    ddb = dynamodb.Table(tablename)
+    ddb.put_item(
+        Item={
+            'DonationID': "hvusvd",
+            'Foodtype': 'hydvcb',
+            'ExpirationDate': '02/09/2025',
+            'Quantity': "3863 g",
+            'Description': 'vdyevkjb vdyvvs',
+            'UserID-of-Donor': '72535',
+            'UserID-of-Recepient': '7253720'
+        }
+    )
+    
+    body = json.dumps("SUCCEEDEDDDD")
+    res = {
+        "statusCode": 200,
+        "headers": {
+            "Content-Type": "application/json"
+        },
+        "body": body
+    }
+    
+    return res
+def read_dynamoDB_items(tablename: str, key: str):
+    """
+    Reads item from dynamodb table.
+    Arguments:
+    - tablename: name of the dynamodb table where items will be inserted
+    - key: primary key of the item
+    """
+    ddb = dynamodb.Table(tablename)
+    # FIGURE OUT HOW TO READ
+    ress=ddb.get_item(
+        Key={
+            'DonationID':key
+        }
+    )
+    if 'Item' in ress:
+        item = ress['Item']
+        return {
+            "statusCode": 200,
+            "headers": {
+                "Content-Type": "application/json"
+            },
+            "body": json.dumps(item)
+        }
+    else:
+        return {
+            "statusCode": 404,
+            "headers": {
+                "Content-Type": "application/json"
+            },
+            "body": json.dumps("Item not found")
+        }
+def update_dynamoDB_items(tablename: str, key: str, Foodtype: str, ExpirationDate: str, Quantity: str, Description: str, UserID-of-Recepient: str):
+    ddb=dynamodb.Table(tablename)
+    ress=ddb.update_item(
+        Key={
+            'DonationID': key,
+            'Foodtype': Foodtype,
+            'ExpirationDate': ExpirationDate,
+            'Quantity': Quantity,
+            'Description': Description
+            'UserID-of-Rcepient': UserID-of-Recepient
+        },
+        UpdateExpression="set Foodtype =:f, ExpirationDate =:e, Quantity =:q, Description =:d, UserID-of-Recepient =:u",
+        ExpressionAttributeValues={
+            ':f': Foodtype,
+            ':e': ExpirationDate,
+            ':q': Quantity,
+            ':d': Description,
+            ':u': UserID-of-Recepient
+        },
+        ReturnValues="UPDATED_NEW"
+    )
+    return ress
+def delete_dynamoDB_items(tablename:str, key: str):
+    ddb=dynamodb.Table(tablename)
+    ddb.delete_item(
+        Key={
+            'DonationID': key
+            }
+        )
+    body = json.dumps("SUCCEEDEDDDD")
+    res = {
+        "statusCode": 200,
+        "headers": {
+            "Content-Type": "application/json"
+        },
+        "body": body
+    }
+    return res
