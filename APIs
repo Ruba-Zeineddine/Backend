@@ -84,5 +84,47 @@ def lambda_handler(event, context):
     return res
 
 
+#dynamodB table for fetching list of donations - API
+{
+    "donationId": "1",
+    "donorName": "John Doe",
+    "amount": 100,
+    "date": "2024-07-21"
+}
+
+
+#code to fetch donations from DynamoDB:
+
+import json
+import boto3
+
+dynamodb = boto3.resource('dynamodb')
+table = dynamodb.Table('Donations')
+
+def lambda_handler(event, context):
+    # Scan the DynamoDB table
+    response = table.scan()
+    items = response['Items']
+    
+    return {
+        'statusCode': 200,
+        'body': json.dumps(items)
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
