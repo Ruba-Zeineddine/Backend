@@ -3,8 +3,6 @@ import uuid
 import boto3
 import base64
 
-
-
 region = 'eu-west-2'
 dynamodb = boto3.resource('dynamodb', region_name=region)
 s3 = boto3.client('s3')
@@ -25,7 +23,7 @@ def upload_image_to_s3(image_data: str, donation_id: str):
         print(f"Error uploading image: {e}")
         return None
 
-def insert_dynamoDB_items(tablename: str, donationID: str, foodtype: str, expirationDate: str, quantity: float, description: str, donorName: str, emailofDonor: str, image_url: str,donorPhoneNumber: str):
+def insert_dynamoDB_items(tablename: str, donationID: str, foodtype: str, expirationDate: str, quantity: str, description: str, donorName: str, emailofDonor: str, image_url: str,donorPhoneNumber: str):
     try:
         ddb = dynamodb.Table(tablename)
         ddb.put_item(
@@ -33,7 +31,7 @@ def insert_dynamoDB_items(tablename: str, donationID: str, foodtype: str, expira
                 'donationID': donationID,
                 'foodtype': foodtype,
                 'expirationDate': expirationDate,
-                'quantity': quantity, 
+                'quantity': quantity,
                 'description': description,
                 'donorName': donorName,  # Add donorName here
                 'emailofDonor': emailofDonor,
@@ -86,7 +84,7 @@ def lambda_handler(event, context):
         donationID = str(uuid.uuid4())
         foodtype = body.get('foodtype')
         expirationDate = body.get('expirationDate')
-        quantity = body.get('quantity') 
+        quantity = body.get('quantity')
         description = body.get('description', '')
         donorName = body.get('donorName')  # Add donorName here
         donorPhoneNumber=body.get('donorPhoneNumber')
