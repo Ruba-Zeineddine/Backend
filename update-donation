@@ -1,0 +1,61 @@
+import json
+import boto3
+from decimal import Decimal
+
+region = 'eu-west-2'
+dynamodb = boto3.resource('dynamodb', region_name=region)
+
+def update_dynamoDB_items(tablename: str, body: dict):
+    ddb = dynamodb.Table(tablename)
+    try:
+        res = ddb.update_item(
+            Key={
+                'donationID': body['donationID']
+            },
+            UpdateExpression="set #d = :d, #n = :n, #h = :h, #s = :s",
+            ExpressionAttributeNames={
+                '#d': 'foodtype',
+                '#n': 'expirationDate',
+                '#h': 'quantity',
+                '#s': 'description'
+            },
+            ExpressionAttributeValues={
+                ':d': body['foodtype'],
+                ':n': body['expirationDate'],
+                ':h': Decimal(body['quantity']),  # Handle as Decimal
+                ':s': body['description']
+            },
+            ReturnValues="UPDATED_NEW"
+        )
+        return res
+    except Exception as e:
+        print(f"Error updating DynamoDB: {e}")
+        raise
+
+def convert_decimal(obj):
+    if isinstance(obj, Decimal):
+        return float(obj)
+    raise TypeError("Type not serializable")
+
+def lambda_handler(event, context):
+    print(f"Received event: {json.dumps(event)}")
+    try:
+        body = json.loads(event['body'])
+        print(f"Request body: {body}")
+        res = update_dynamoDB_items('donation-table', body)
+        return {
+            'statusCode': 200,
+            'body': json.dumps({
+                'message': 'Donation updated successfully',
+                'data': res
+            }, default=convert_decimal)
+        }
+    except Exception as e:
+        print(f"Error processing request: {e}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps({
+                'message': 'Error updating donation',
+                'error': str(e)
+            }, default=convert_decimal)
+        }
