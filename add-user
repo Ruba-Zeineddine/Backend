@@ -1,0 +1,80 @@
+import json
+import hashlib
+import boto3
+
+region = 'eu-west-2'
+dynamodb = boto3.resource('dynamodb', region_name=region)
+
+def insert_dynamoDB_items(tablename: str, email: str, name: str, description: str, phoneNumber: str, hash_password: str):
+    try:
+        ddb = dynamodb.Table(tablename)
+        ddb.put_item(
+            Item={
+                'email': email,
+                'name': name,
+                'description': description,
+                'phoneNumber': phoneNumber,
+                'password': hash_password
+            }
+        )
+        return {
+            "statusCode": 200,
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Content-Type",
+                "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+            },
+            "body": json.dumps("Success")
+        }
+    except Exception as e:
+        print(f"Error inserting item into DynamoDB: {e}")
+        return {
+            "statusCode": 500,
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Content-Type",
+                "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+            },
+            "body": json.dumps({"error": str(e)})
+        }
+
+def lambda_handler(event, context):
+    print("Received event:", json.dumps(event))  # Log the event to inspect its structure
+    
+    if 'httpMethod' in event and event['httpMethod'] == 'OPTIONS':
+        return {
+            "statusCode": 200,
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Content-Type",
+                "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+            },
+            "body": json.dumps("CORS preflight")
+        }
+
+    try:
+        body = json.loads(event.get('body', '{}'))  # Default to an empty dict if 'body' is missing
+        email = body['email']
+        phoneNumber = body['phoneNumber']
+        password = body['password']
+        hash_object = hashlib.sha256()
+        hash_object.update(password.encode())
+        hash_password = hash_object.hexdigest()
+        description = body.get('description', '')
+        name = body['name']
+        return insert_dynamoDB_items('user-table', email, name, description, phoneNumber, hash_password)
+    except Exception as e:
+        print(f"Error processing request: {e}")
+        return {
+            "statusCode": 400,
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Content-Type",
+                "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+            },
+            "body": json.dumps({"error": str(e)})
+        }
