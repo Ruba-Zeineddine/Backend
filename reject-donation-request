@@ -1,0 +1,44 @@
+import json
+import boto3
+from boto3.dynamodb.conditions import Key
+
+dynamodb = boto3.resource('dynamodb')
+table = dynamodb.Table('requests-table') 
+
+def lambda_handler(event, context):
+    try:
+        body = json.loads(event['body'])
+        request_id = body.get('requestId')
+        
+        # Update the status to 'rejected'
+        response = table.update_item(
+            Key={
+                'request-id': request_id
+            },
+            UpdateExpression="set #status = :status",
+            ExpressionAttributeNames={
+                '#status': 'status'
+            },
+            ExpressionAttributeValues={
+                ':status': 'rejected'
+            },
+            ReturnValues="UPDATED_NEW"
+        )
+        
+        return {
+            'statusCode': 200,
+            'body': json.dumps({
+                'message': 'Request status updated to rejected',
+                'updatedAttributes': response['Attributes']
+            })
+        }
+        
+    except Exception as e:
+        print(f"Error updating request status: {e}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps({
+                'message': 'Failed to reject request',
+                'error': str(e)
+            })
+        }
