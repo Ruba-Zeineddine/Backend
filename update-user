@@ -1,0 +1,139 @@
+import json
+import boto3
+import logging
+import base64
+import re
+
+region = 'eu-west-2'
+dynamodb = boto3.resource('dynamodb', region_name=region)
+s3 = boto3.client('s3', region_name=region)
+bucket_name = 'user-picture-profile'
+
+# Configure logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+def extract_and_sanitize_email_prefix(email):
+    """Extract the part before the '@' and replace special characters with underscores"""
+    prefix = email.split('@')[0]
+    return re.sub(r'[^A-Za-z0-9_.-]', '_', prefix)
+
+def upload_to_s3(profile_picture, email):
+    try:
+       profile_picture = add_padding(profile_picture)
+       profile_picture = base64.b64decode(profile_picture)
+        
+        # Log the base64 string length (omit or mask sensitive content if necessary)
+       logger.info(f"Base64 string length: {len(profile_picture)}")
+        
+        # Log the decoded image size
+       logger.info(f"Decoded image size: {len(profile_picture)} bytes")
+        
+        # Sanitize the email prefix for the S3 key
+       sanitized_prefix = extract_and_sanitize_email_prefix(email)
+        
+        # Upload to S3
+       s3_key = f'profile-pictures/{sanitized_prefix}.png'
+       s3.put_object(
+            Bucket=bucket_name,
+            Key=s3_key,
+            Body=profile_picture,
+            ContentType='image/png'
+        )
+        
+        # Construct and log the image URL
+       image_url = f'https://{bucket_name}.s3.{region}.amazonaws.com/{s3_key}'
+       logger.info(f"Uploaded image URL: {image_url}")
+        
+       return image_url
+    except Exception as e:
+        logger.error(f"Error uploading image to S3: {e}")
+        raise
+def add_padding(base64_string):
+    return base64_string + "=" * ((4 - len(base64_string) % 4) % 4)
+
+def update_dynamoDB_items(tablename: str, body: dict):
+    ddb = dynamodb.Table(tablename)
+    
+    update_expression = "set #d = :d, #n = :n, #h = :h"
+    expression_attribute_values = {
+        ':d': body['description'],
+        ':n': body['name'],
+        ':h': body['phoneNumber']
+    }
+    expression_attribute_names = {
+        '#d': 'description',
+        '#n': 'name',
+        '#h': 'phoneNumber'
+    }
+
+    if 'profilePictureUrl' in body:
+        update_expression += ", #p = :p"
+        expression_attribute_values[':p'] = body['profilePictureUrl']
+        expression_attribute_names['#p'] = 'profilePictureUrl'
+
+    try:
+        res = ddb.update_item(
+            Key={
+                'email': body['email']
+            },
+            UpdateExpression=update_expression,
+            ExpressionAttributeNames=expression_attribute_names,
+            ExpressionAttributeValues=expression_attribute_values,
+            ReturnValues="UPDATED_NEW"
+        )
+        return res
+    except Exception as e:
+        logger.error(f"Error updating item in DynamoDB: {e}")
+        raise
+
+def validate_input(body):
+    required_fields = ['email', 'description', 'name', 'phoneNumber']
+    for field in required_fields:
+        if field not in body:
+            raise ValueError(f"Missing required field: {field}")
+
+def lambda_handler(event, context):
+    try:
+        # Ensure the body is correctly parsed from JSON string to dictionary
+        body = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
+        validate_input(body)
+        
+        if 'profilePicture' in body and body['profilePicture']:
+            body['profilePictureUrl'] = upload_to_s3(body['profilePicture'], body['email'])
+        
+        res = update_dynamoDB_items('user-table', body)
+        return {
+            "statusCode": 200,
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Content-Type",
+                "Access-Control-Allow-Methods": "OPTIONS,PUT,GET"
+            },
+            "body": json.dumps(res)
+        }
+    except ValueError as ve:
+        logger.warning(f"Validation error: {ve}")
+        return {
+            "statusCode": 400,
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Content-Type",
+                "Access-Control-Allow-Methods": "OPTIONS,PUT,GET"
+            },
+            "body": json.dumps({"error": str(ve)})
+        }
+    except Exception as e:
+        logger.error(f"Error processing request: {e}")
+        return {
+            "statusCode": 500,
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Content-Type",
+                "Access-Control-Allow-Methods": "OPTIONS,PUT,GET"
+            },
+            "body": json.dumps({"error": "Internal server error"})
+        }
