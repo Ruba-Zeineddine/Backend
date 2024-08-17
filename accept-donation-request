@@ -1,0 +1,39 @@
+import boto3
+import json
+
+dynamodb = boto3.resource('dynamodb')
+
+def lambda_handler(event, context):
+    try:
+        # Parse the request body
+        body = json.loads(event.get('body', '{}'))
+        requestId = body.get('requestId')
+        donationId = body.get('donationId')
+        newStatus = "accepted"
+
+        # Update the status of the request in the requests-table
+        requests_table = dynamodb.Table('requests-table')
+        requests_table.update_item(
+            Key={'request-id': requestId},
+            UpdateExpression="set #st = :s",
+            ExpressionAttributeNames={'#st': 'status'},
+            ExpressionAttributeValues={':s': newStatus}
+        )
+
+        # Remove the donation from the donation-table
+        donation_table = dynamodb.Table('donation-table')
+        donation_table.delete_item(
+            Key={'donationID': donationId}
+        )
+
+        return {
+            'statusCode': 200,
+            'body': json.dumps({'message': 'Request accepted and donation removed from feed.'})
+        }
+
+    except Exception as e:
+        print(f"Error accepting request: {str(e)}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'message': 'Failed to accept request', 'error': str(e)})
+        }
