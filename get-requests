@@ -1,0 +1,41 @@
+import json
+import boto3
+
+
+# Initialize DynamoDB resource
+dynamodb = boto3.resource('dynamodb')
+
+def lambda_handler(event, context):
+    table = dynamodb.Table('requests-table')
+    
+    # Initialize variables for pagination
+    last_evaluated_key = None
+    all_items = []
+
+    try:
+        while True:
+            # Scan the table with a filter expression to exclude 'accepted' and 'rejected' statuses
+            scan_kwargs = {
+               
+            }
+            if last_evaluated_key:
+                scan_kwargs['ExclusiveStartKey'] = last_evaluated_key
+
+            response = table.scan(**scan_kwargs)
+            items = response.get('Items', [])
+            all_items.extend(items)
+            
+            last_evaluated_key = response.get('LastEvaluatedKey')
+            if not last_evaluated_key:
+                break
+
+        return {
+            'statusCode': 200,
+            'body': json.dumps(all_items)
+        }
+    except Exception as e:
+        print(f"Error scanning table: {str(e)}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': str(e)})
+        }
