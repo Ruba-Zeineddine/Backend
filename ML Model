@@ -1,0 +1,139 @@
+import json
+import boto3
+import urllib.parse
+from PIL import Image
+import numpy
+from io import BytesIO
+
+# Initialize clients for DynamoDB, S3, and SageMaker Runtime
+dynamodb = boto3.client('dynamodb')
+s3_client = boto3.client('s3')
+sagemaker_runtime = boto3.client('runtime.sagemaker')
+
+# Set the endpoint name and region
+ENDPOINT_NAME = 'tensorflow-inference-2024-07-30-18-42-08-836'
+REGION = 'eu-west-2'
+DYNAMODB_TABLE = 'donation-table'
+
+def lambda_handler(event, context):
+    # Scan DynamoDB for donations of type "fruits and vegetables"
+    response = dynamodb.scan(
+        TableName=DYNAMODB_TABLE,
+        FilterExpression='foodtype = :foodtype',
+        ExpressionAttributeValues={
+            ':foodtype': {'S': 'specific-fruits/vegetables'}
+        }
+    )
+
+    items = response['Items']
+    results = []
+    
+    # Process each donation item
+    for item in items:
+        donation_id = item['donationID']['S']
+        image_url = item['donation-picture']['S']
+        description = item['description']['S']  # Fetch existing description
+        
+        # Parse the S3 bucket and key from the URL
+        s3_bucket, s3_key = parse_s3_url(image_url)
+        
+        # Download the image from S3
+        response = s3_client.get_object(Bucket=s3_bucket, Key=s3_key)
+        image_data = response['Body'].read()
+        
+        # Load and process the image
+        image = Image.open(BytesIO(image_data))
+        img_height = 180
+        img_width = 180
+        image = image.resize((img_width, img_height))
+        img_array = numpy.array(image) / 255.0
+        img_array = numpy.expand_dims(img_array, axis=0)
+        
+        # Convert numpy array to bytes
+        payload = json.dumps(img_array.tolist())
+        
+        # Make prediction
+        response = sagemaker_runtime.invoke_endpoint(
+            EndpointName=ENDPOINT_NAME,
+            ContentType='application/json',
+            Body=payload
+        )
+        
+        # Parse prediction result
+        result = json.loads(response['Body'].read().decode())
+        print(result)
+        value = result['predictions'][0][0]
+        predicted_label = 'Rotten' if value > 0.5 else 'Fresh'
+        
+        # Define messages
+        fresh_message = "✅ This donation has been detected as fresh "
+        rotten_message = "🚫 This donation has been detected as rotten. Instead of discarding it, please consider using it for composting or other useful purposes to help reduce waste."
+        
+        # Initialize update expression and attribute values
+        update_expression = 'SET prediction_result = :result'
+        expression_attribute_values = {
+            ':result': {'S': predicted_label}
+        }
+        
+        # If the result is "Rotten," update the description
+        if predicted_label == 'Rotten':
+            if rotten_message not in description:
+                description += "-" + rotten_message
+                update_expression += ', description = :desc'
+                expression_attribute_values[':desc'] = {'S': description}
+        
+        # If the result is "Fresh," update the description
+        elif predicted_label == 'Fresh':
+            if fresh_message not in description:
+                description += "-" + fresh_message
+                update_expression += ', description = :desc'
+                expression_attribute_values[':desc'] = {'S': description}
+        
+        # Update DynamoDB with the new description
+        dynamodb.update_item(
+            TableName=DYNAMODB_TABLE,
+            Key={'donationID': {'S': donation_id}},
+            UpdateExpression=update_expression,
+            ExpressionAttributeValues=expression_attribute_values
+        )
+        
+        results.append({
+            'donation_id': donation_id,
+            'prediction': predicted_label
+        })
+    
+    print(results)
+    return {
+        'statusCode': 200,
+        'body': json.dumps({'message': 'Processing completed successfully'})
+    }
+
+def parse_s3_url(url):
+    """
+    Extract S3 bucket name and key from a given S3 URL.
+    Example URL: 'https://bucket-name.s3.region.amazonaws.com/path/to/image.jpg'
+    """
+    if url.startswith('https://'):
+        # Remove 'https://'
+        url = url[8:]
+        
+        # Find where the bucket name ends
+        bucket_end_index = url.find('.s3.')
+        if bucket_end_index == -1:
+            raise ValueError("Invalid S3 URL format: Could not find '.s3.'")
+        
+        # Extract bucket name
+        bucket = url[:bucket_end_index]
+        
+        # Extract key
+        key = url[bucket_end_index + len('.s3.'):]
+        
+        # Remove the region and possible extra parts
+        key = key.split('/', 1)[-1]
+        
+        # URL-decode the key
+        key = urllib.parse.unquote(key)
+        
+        return bucket, key
+    else:
+        raise ValueError("URL does not start with 'https://'")
