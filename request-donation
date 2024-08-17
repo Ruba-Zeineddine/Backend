@@ -1,0 +1,87 @@
+import boto3
+import uuid
+import json
+
+dynamodb = boto3.resource('dynamodb')
+
+def lambda_handler(event, context):
+    print("Received event:", event)  # Log the entire event for debugging
+    
+    # Parse the body from the event
+    try:
+        body = json.loads(event.get('body', '{}'))
+        donationId = body.get('donationId')
+        requesterEmail = body.get('requesterEmail')
+        donorEmail = body.get('donorEmail')
+        donationDetails = body.get('donationDetails')
+       
+        
+        if not all([donationId, requesterEmail, donorEmail, donationDetails]):
+            raise ValueError("Missing required parameters")
+    except (ValueError, json.JSONDecodeError) as e:
+        return {
+            'statusCode': 400,
+            'body': json.dumps({'message': str(e)})
+        }
+    
+    donation_table = dynamodb.Table('donation-table')
+    donation_response = donation_table.get_item(Key={'donationID': donationId})
+    
+    if 'Item' not in donation_response:
+        return {
+            'statusCode': 404,
+            'body': json.dumps({'message': 'Donation not found'})
+        }
+    
+    donation_item = donation_response['Item']
+    donorEmail = donation_item.get('emailofDonor', donorEmail)
+    
+    
+    # Fetch requester's name from the 'user-table'
+    user_table = dynamodb.Table('user-table')
+    user_response = user_table.get_item(Key={'email': requesterEmail})
+    
+    if 'Item' not in user_response:
+        return {
+            'statusCode': 404,
+            'body': json.dumps({'message': 'User not found'})
+        }
+    
+    requesterName = user_response['Item'].get('name')
+    
+    user_table = dynamodb.Table('user-table')
+    user_response = user_table.get_item(Key={'email': donorEmail})
+    
+    if 'Item' not in user_response:
+        return {
+            'statusCode': 404,
+            'body': json.dumps({'message': 'User not found'})
+        }
+    
+    donorName = user_response['Item'].get('name')
+ 
+    requestId = str(uuid.uuid4())
+    requests_table = dynamodb.Table('requests-table')
+    try:
+        requests_table.put_item(
+            Item={
+                'request-id': requestId,
+                'donationID': donationId,
+                'emailofreceiver': requesterEmail,
+                'requestername': requesterName,
+                'donorname': donorName,
+                'emailofDonor': donorEmail,
+                
+                'donationDetails': donationDetails
+            }
+        )
+        return {
+            'statusCode': 200,
+            'body': json.dumps({'message': 'Donation request submitted successfully!'})
+        }
+    except Exception as e:
+        print(f"Error storing data in DynamoDB: {str(e)}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'message': 'Failed to submit donation request'})
+        }
